@@ -1,0 +1,36 @@
+[project]
+name = "index-fidelity-ahi-study"
+version = "0.1.0"
+description = "Measuring Index-Request Fidelity: Hash-Index Substitution and the Adaptive Hash Index in MySQL InnoDB versus MEMORY under Shifting Read/Write Workloads"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy==2.1.3",
+    "scipy==1.14.1",
+    "pandas==2.2.3",
+    "matplotlib==3.9.3",
+    "PyYAML==6.0.2",
+    "mysql-connector-python==9.1.0",
+    "docker==7.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.3",
+    "pytest-mock==3.14.0",
+]
+
+[project.scripts]
+audit = "src.cli:main"
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: live tests requiring Docker and a reachable MySQL (deselected by default)",
+]
+addopts = "-m 'not integration'"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["src*", "fidelity*"]
