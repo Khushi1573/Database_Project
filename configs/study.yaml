@@ -1,0 +1,18 @@
+study:
+  name: index-fidelity-v1
+  mysql_image: mysql:8.4
+  repeats: 5
+  seed: 20261101
+  rows: 1000000
+  warmup_seconds: 120
+  phases:
+    - { read_pct: 95, seconds: 300 }
+    - { read_pct: 10, seconds: 300 }
+    - { read_pct: 95, seconds: 300 }
+  cells:
+    A: { engine: InnoDB, index: BTREE, ahi: off }
+    B: { engine: InnoDB, index: BTREE, ahi: on }
+    C: { engine: InnoDB, index: HASH, ahi: off }
+    D: { engine: InnoDB, index: HASH, ahi: on }
+    E: { engine: MEMORY, index: BTREE, ahi: "n/a" }
+    F: { engine: MEMORY, index: HASH, ahi: "n/a" }
