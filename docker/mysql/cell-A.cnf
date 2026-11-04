@@ -1,0 +1,6 @@
+# Cell A: InnoDB, requested index=BTREE, AHI=off (baseline control)
+[mysqld]
+default-storage-engine = InnoDB
+innodb-buffer-pool-size = 2G
+innodb-adaptive-hash-index = OFF
+performance-schema = ON

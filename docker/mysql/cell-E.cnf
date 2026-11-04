@@ -1,0 +1,5 @@
+# Cell E: MEMORY engine, requested index=BTREE, AHI=n/a
+[mysqld]
+default-storage-engine = MEMORY
+max-heap-table-size = 4G
+performance-schema = ON

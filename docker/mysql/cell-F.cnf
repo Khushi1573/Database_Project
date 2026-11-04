@@ -1,0 +1,5 @@
+# Cell F: MEMORY engine, requested index=HASH, AHI=n/a
+[mysqld]
+default-storage-engine = MEMORY
+max-heap-table-size = 4G
+performance-schema = ON

@@ -1,0 +1,43 @@
+# Compose file for ad-hoc / interactive use. The orchestrator
+# (src/orchestrator.py, via src/config_manager.py) manages per-cell MySQL
+# containers programmatically through the Docker SDK for the experiment matrix.
+#
+# Network: `audit-net` is a bridge network; MySQL publishes 3306 on 127.0.0.1 only.
+
+services:
+  runner:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.runner
+    networks:
+      - audit-net
+    env_file:
+      - ../.env
+    volumes:
+      - ../results:/app/results
+      - ../configs:/app/configs
+    depends_on:
+      - mysql-dev
+
+  mysql-dev:
+    image: mysql:8.4
+    networks:
+      - audit-net
+    env_file:
+      - ../.env
+    environment:
+      MYSQL_DATABASE: bench
+    ports:
+      - "127.0.0.1:13306:3306"
+    volumes:
+      - ./mysql/cell-A.cnf:/etc/mysql/conf.d/cell.cnf:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+networks:
+  audit-net:
+    driver: bridge
+    internal: false
