@@ -1,18 +1,42 @@
+# Study configuration for:
+# "Measuring Index-Request Fidelity: Hash-Index Substitution and the
+#  Adaptive Hash Index in MySQL InnoDB versus MEMORY under Shifting
+#  Read/Write Workloads" (COMP.8157 Team 2, D.4.2 section 6.2)
+
 study:
   name: index-fidelity-v1
   mysql_image: mysql:8.4
-  repeats: 5
-  seed: 20261101
-  rows: 1000000
+  repeats: 5                  # >= 5 (FR-10)
+  seed: 20261101              # master seed; per-run seeds are derived and recorded
+  rows: 1000000               # 1000000 or 10000000
   warmup_seconds: 120
-  phases:
+  phases:                     # 95% -> 10% -> 95% reads (FR-9)
     - { read_pct: 95, seconds: 300 }
     - { read_pct: 10, seconds: 300 }
     - { read_pct: 95, seconds: 300 }
-  cells:
-    A: { engine: InnoDB, index: BTREE, ahi: off }
-    B: { engine: InnoDB, index: BTREE, ahi: on }
-    C: { engine: InnoDB, index: HASH, ahi: off }
-    D: { engine: InnoDB, index: HASH, ahi: on }
-    E: { engine: MEMORY, index: BTREE, ahi: "n/a" }
-    F: { engine: MEMORY, index: HASH, ahi: "n/a" }
+  threads: 8
+  cpu_pinning:
+    driver: "0-1"
+    mysql: "2-3"
+
+adaptation:
+  median_window: 5            # moving-median denoising window
+  window: 10                  # stability window W (D.4.2 section 5.5)
+  epsilon: 0.02               # range tolerance epsilon
+
+cells:
+  A: { engine: InnoDB, index: BTREE, ahi: "off" }
+  B: { engine: InnoDB, index: BTREE, ahi: "on" }
+  C: { engine: InnoDB, index: HASH, ahi: "off" }
+  D: { engine: InnoDB, index: HASH, ahi: "on" }
+  E: { engine: MEMORY, index: BTREE, ahi: "n/a" }
+  F: { engine: MEMORY, index: HASH, ahi: "n/a" }
+
+mysql:
+  innodb_buffer_pool_size: "2G"      # identical across InnoDB cells (A-D)
+  max_heap_table_size_memory: "4G"   # raised for MEMORY cells (E, F)
+  container_mem_limit: "4g"
+  healthcheck_timeout_seconds: 60
+
+docker:
+  network: "audit-net"
