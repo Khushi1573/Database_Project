@@ -1,54 +1,74 @@
-# Fidelity Auditor and Analysis (Malik Oyewole, Team 2)
+# Measuring Index-Request Fidelity (COMP.8157 Team 2)
 
-Implements my modules for the COMP.8157 project, following D.4.2 (section 5.3 for
-the metrics, section 6.4 for the stage interfaces).
+**Hash-Index Substitution and the Adaptive Hash Index in MySQL InnoDB versus MEMORY under Shifting Read/Write Workloads**
 
-| Module | Requirement | What it does |
-|---|---|---|
-| `fidelity/auditor.py` | FR-4, FR-5 | Reads the built index from `information_schema.statistics` and `SHOW INDEX`, checks they agree, computes Fs (type, ordered columns, uniqueness) |
-| `fidelity/ahi.py` | FR-6 | Uh = Δadaptive_hash_searches / (Δadaptive_hash_searches + Δadaptive_hash_searches_btree); fixed values for MEMORY and AHI-off cells |
-| `fidelity/crossval.py` | FR-7 | Cell A vs Cell C structural comparison; flags silent HASH→BTREE substitution |
-| `fidelity/adaptation.py` | FR-14 | Adaptation time = first point after which the series stays within ε of its plateau for ≥ W samples |
-| `fidelity/aggregate.py` | FR-15, FR-16, NFR-4 | Median + percentile bootstrap 95% CI (SciPy, 10,000 resamples, seed 8157); summary CSV keeps run ids and source files |
-| `fidelity/plots.py` | FR-17 | One figure per metric: median dot with CI whisker per cell |
-| `tests/` | AC-3 | Ground-truth fixture for the six cells plus unit tests (33 tests) |
+Implemented from the requirements in `docs/D_4_1_TEAM_2.pdf` and the design blueprint in `docs/D4_2_TEAM_2.pdf`.
 
-## Run the tests
+## Experimental Cells
+
+| Cell | Engine | Requested index | AHI |
+|---|---|---|---|
+| A | InnoDB | BTREE | off |
+| B | InnoDB | BTREE | on |
+| C | InnoDB | HASH | off |
+| D | InnoDB | HASH | on |
+| E | MEMORY | BTREE | n/a |
+| F | MEMORY | HASH | n/a |
+
+Each run creates `bench.sbtest1` before bulk loading, audits Structural Fidelity (`Fs`), runs a warm-up followed by three workload phases (`95% -> 10% -> 95%` reads), samples telemetry every second (`1 s`), computes Effective Hash Coverage (`Uh`) and AHI adaptation times, cross-validates Cell A vs Cell C (`FR-7`), and generates `results/aggregated/summary.csv`, `results/figures/*.png`, and `results/report.html`.
+
+## Setup
 
 ```bash
-pip install numpy scipy matplotlib pytest
-python -m pytest -q
+cp .env.example .env   # fill in passwords; .env is gitignored
+pip install -r requirements.txt
 ```
 
-No MySQL server is needed for the tests; the live functions take any DB-API
-cursor (e.g. PyMySQL or mysql-connector).
+Docker is required for `run` and `matrix` (provisions pinned `mysql:8.4` containers per cell/run). `validate`, `report` (over existing raw files), and offline unit tests run without Docker or MySQL.
 
-## Live use (sketch)
+## CLI Usage (D.4.2 section 6.1)
 
-```python
-from fidelity.auditor import IndexSpec, audit
-from fidelity.ahi import read_counters, compute_uh
+```bash
+# Validate study configuration (exit 0 ok, 2 invalid)
+python -m src.cli validate --config configs/study.yaml
 
-res = audit(cur, "C", "adt", "t_c", IndexSpec("idx_k", "HASH", ("k",), False))
-before = read_counters(cur)   # needs: SET GLOBAL innodb_monitor_enable = 'module_adaptive_hash';
-# ... measured phase ...
-after = read_counters(cur)
-uh = compute_uh(res.engine, ahi_enabled=True, built_type=res.built.index_type,
-                before=before, after=after)
+# Run a single cell and repeat (exit 0, 3, 4)
+python -m src.cli run --config configs/study.yaml --cell A --repeat 1 --results results
+
+# Run the full randomized 6 x 5 matrix with resumability & 1 retry (exit 0, 2, 3, 4)
+python -m src.cli matrix --config configs/study.yaml --results results
+
+# Aggregate raw results and write summary.csv, figures/*.png, and report.html (exit 0, 4)
+python -m src.cli report --results results
+
+# Remove any leftover containers from interrupted runs (exit 0)
+python -m src.cli clean
 ```
 
-## Still open (after pilots)
+Or via Docker Compose:
 
-- Replace the fixture's synthetic rows with metadata captured from the pilot server.
-- Confirm counter semantics against EXPLAIN and performance_schema on one pilot cell.
-- Fix W and ε for the adaptation detector (defaults 5 and 0.05 are placeholders).
+```bash
+docker compose -f docker/docker-compose.yml build runner
+docker compose -f docker/docker-compose.yml run --rm runner matrix --config configs/study.yaml --results results
+```
 
-## Suggested commits (one per requirement)
+## Tests
 
-1. `FR-4/FR-5: Fidelity Auditor - Fs from statistics and SHOW INDEX with cross-check`
-2. `AC-3: ground-truth fixture for six-cell matrix and auditor tests`
-3. `FR-6: Uh from InnoDB AHI counter deltas, fixed values for MEMORY/AHI-off`
-4. `FR-7: Cell A vs C structural cross-validation`
-5. `FR-15/FR-16: bootstrap median CI aggregation and traceable summary CSV`
-6. `FR-14: AHI adaptation-time detector (W, epsilon parameters)`
-7. `FR-17: per-metric summary figures`
+```bash
+python -m pytest -q                    # offline unit tests (default)
+python -m pytest -m integration -q     # live Docker + MySQL integration test
+```
+
+## Repository Layout
+
+- `configs/study.yaml` — study parameters and six-cell matrix (`FR-1`..`FR-3`)
+- `src/config_manager.py` — YAML validation and Docker MySQL 8.4 provisioning (`FR-1`..`FR-3`, `NFR-5`, `NFR-7`, `NFR-9`)
+- `src/workload_driver.py` — schema rendering, seeded loader, MEMORY 1M-row fallback, sysbench runner (`FR-8`, `FR-9`, `FR-11`)
+- `src/telemetry.py` — 1s sampler, continuity check, raw CSV/JSON writer (`FR-13`, `FR-16`, `AC-8`)
+- `src/orchestrator.py` — shuffled schedule, derived seeds, resumability, 1 retry (`FR-10`, `AC-6`)
+- `src/reporting.py` — aggregation, Cell A vs C cross-validation, Wireframe S1 report (`FR-7`, `FR-14`..`FR-17`)
+- `src/cli.py` — `validate`, `run`, `matrix`, `report`, `clean` CLI
+- `fidelity/` — `auditor.py`, `ahi.py`, `crossval.py`, `adaptation.py`, `aggregate.py`, `plots.py`
+- `sql/schema.sql`, `lua/mixed_rw.lua`, `docker/` — database schema, sysbench Lua workload, container configs
+- `tests/` — offline unit tests (`AC-1`, `AC-3`, `AC-4`, `AC-6`..`AC-10`) and marked integration test
+- `docs/` — `D_4_1_TEAM_2.pdf`, `D4_2_TEAM_2.pdf`, `D3_1_Midterm_Project_Status_Report_Team2.pdf`
